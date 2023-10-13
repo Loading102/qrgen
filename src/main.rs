@@ -21,22 +21,6 @@ fn get_pixel(point: &Module) -> bool {
     }
 }
 
-fn mark_alignment_pattern( qr: &mut Vec<Vec<Module>>, x:usize, y:usize) {
-
-    for i in x-2..=x+2 {
-        for j in y-2..=y+2 {
-            qr[i][j] = Module::Constant(true);
-        }
-    }
-    for i in x-1..=x+1 {
-        for j in y-1..=y+1 {
-            qr[i][j] = Module::Constant(false);
-        }
-    }
-    qr[x][y] = Module::Constant(true);
-
-}
-
 fn new_qr_code(version: usize) -> Vec<Vec<Module>> {
     let alignment_pattern_distance = [1, 1, 1, 1, 1, 1, 16, 18, 20, 22, 24, 26, 28, 20, 22, 24, 24, 26, 28, 28, 22, 24, 24, 26, 26, 28, 28, 24, 24, 26, 26, 26, 26, 26, 24, 26, 26, 26, 28, 28];
     // zaczyna się od version 7
@@ -51,10 +35,10 @@ fn new_qr_code(version: usize) -> Vec<Vec<Module>> {
     // add finder patterns
     for (i, j) in [(0, 0), (size-7, 0), (0, size-7)] {
         for k in 0..9 {
-            if 1<=i+k && i+k<size+1 &&   j<size+1 && 1<=j   { qr[i+k-1][ j-1 ] = Module::Constant(false);}
-            if 1<=i   &&   i<size+1 && j+k<size   && 0<=j+k { qr[ i-1 ][ j+k ] = Module::Constant(false);}
-            if 0<=i+k && i+k<size   && j+7<size   && 0<=j+7 { qr[ i+k ][ j+7 ] = Module::Constant(false);}
-            if 0<=i+7 && i+7<size   && j+k<size+1 && 1<=j+k { qr[ i+7 ][j+k-1] = Module::Constant(false);}
+            if 1<=i+k  && i+k<size+1 &&   j<size+1 && 1<=j   { qr[i+k-1][ j-1 ] = Module::Constant(false);}
+            if 1<=i    &&   i<size+1 && j+k<size/*&& 0<=j+k*/{ qr[ i-1 ][ j+k ] = Module::Constant(false);}
+            if/*0<=i+k&&*/ i+k<size  && j+7<size/*&& 0<=j+7*/{ qr[ i+k ][ j+7 ] = Module::Constant(false);}
+            if/*0<=i+7&&*/ i+7<size  && j+k<size+1 && 1<=j+k { qr[ i+7 ][j+k-1] = Module::Constant(false);}
         }
         for k in 0..7 {
             for l in 0..7 {
@@ -77,6 +61,21 @@ fn new_qr_code(version: usize) -> Vec<Vec<Module>> {
     }
     // add alignment patterns
     {
+        fn mark_alignment_pattern( qr: &mut Vec<Vec<Module>>, x:usize, y:usize) {
+
+            for i in x-2..=x+2 {
+                for j in y-2..=y+2 {
+                    qr[i][j] = Module::Constant(true);
+                }
+            }
+            for i in x-1..=x+1 {
+                for j in y-1..=y+1 {
+                    qr[i][j] = Module::Constant(false);
+                }
+            }
+            qr[x][y] = Module::Constant(true);
+        
+        }
         let padding = size-7;
         for i in 0..apc-1 {
             for j in 0..apc-1 {
@@ -170,17 +169,60 @@ fn get_capacity(version: &usize) -> usize {
     }
 }
 
-fn get_format_info(error_correction_level: usize, mask: usize) -> u32 {
-    let foinf = [0x5412, 0x5125, 0x5E7C, 0x5B4B, 0x45F9, 0x40CE, 0x4F97, 0x4AA0, 0x77C4, 0x72F3, 0x7DAA, 0x789D, 0x662F, 0x6318, 0x6C41, 0x6976, 0x1689, 0x13BE, 0x1CE7, 0x19D0, 0x0762, 0x0255, 0x0D0C, 0x083B, 0x355F, 0x3068, 0x3F31, 0x3A06, 0x24B4, 0x2183, 0x2EDA, 0x2BED];
-    foinf[(error_correction_level-1)*8+mask]
-}
-
 fn set_error_correction_level(qr: &mut Vec<Vec<Module>>, error_correction_level: usize) {
     let size = qr.len();
     qr[8][0]      = Module::Meta((error_correction_level-1) & 2 == 0);
     qr[size-1][8] = Module::Meta((error_correction_level-1) & 2 == 0);
     qr[8][1]      = Module::Meta((error_correction_level-1) & 1 != 0);
     qr[size-2][8] = Module::Meta((error_correction_level-1) & 1 != 0);
+}
+
+fn write_mask(qr: &mut Vec<Vec<Module>>, mask: usize) {
+    fn flip_data_module(modu: &mut Module) {
+        if let Module::Data(val) = modu {*val = !*val}
+    }    
+    let size = qr.len();
+    for i in 0..size {
+        for j in 0..size {
+            if match mask {
+                0 => {(i+j)%2 == 0},
+                1 => {i%2 == 0},
+                2 => {j%3 == 0},
+                3 => {(i+j)%3 == 0},
+                4 => {((i/2)+(j/3))%2==0},
+                5 => {(i*j)%2+(i*j)%3==0},
+                6 => {((i*j)%2+(i*j)%3)%2==0},
+                7 => {((i+j)%2+(i*j)%3)%2==0},
+                _ => panic!("Invalid mask!")
+            } {flip_data_module(&mut qr[i][j]);}
+        }
+    }
+
+    fn flip_meta_module(condition: bool, modu: &mut Module) {
+        if let Module::Meta(val) = modu {*val = *val^condition;}
+    }
+    let ecl = {
+        (if let Module::Meta(val) = qr[8][0] {if val {0} else {2}} else {panic!("expected Module::Meta at qr[8][0]")}) + 
+        (if let Module::Meta(val) = qr[8][1] {if val {1} else {0}} else {panic!("expected Module::Meta at qr[8][1]")})
+    };
+    let foinf = [0x5412, 0x5125, 0x5E7C, 0x5B4B, 0x45F9, 0x40CE, 0x4F97, 0x4AA0, 0x77C4, 0x72F3, 0x7DAA, 0x789D, 0x662F, 0x6318, 0x6C41, 0x6976, 0x1689, 0x13BE, 0x1CE7, 0x19D0, 0x0762, 0x0255, 0x0D0C, 0x083B, 0x355F, 0x3068, 0x3F31, 0x3A06, 0x24B4, 0x2183, 0x2EDA, 0x2BED];
+    let foinf = foinf[ecl*8+mask];
+    for i in 0..=5 {
+        flip_meta_module(foinf & 1<<i != 0, &mut qr[i][8]);
+        flip_meta_module(foinf & 1<<i != 0, &mut qr[8][size-1-i]);
+    }
+    for i in 6..=7 {
+        flip_meta_module(foinf & 1<<i != 0, &mut qr[i+1][8]);
+        flip_meta_module(foinf & 1<<i != 0, &mut qr[8][size-1-i]);
+    }
+    flip_meta_module(foinf & 1<<8 != 0, &mut qr[8][7]);
+    flip_meta_module(foinf & 1<<8 != 0, &mut qr[size-7][8]);
+    for i in 9..=12 {
+        flip_meta_module(foinf & 1<<i != 0, &mut qr[8][14-i]);
+        flip_meta_module(foinf & 1<<i != 0, &mut qr[size-15+i][8]);
+    }
+    // we don't write the error correction level data, since it's already there
+
 }
 
 fn main() {
@@ -190,15 +232,17 @@ fn main() {
     let version = 2; // (1..=40)
     // let qz = 4; // quiet zone size, currently broken if not 4
     let ecl = 1; // (1..=4)
-    // let mask = 0; // (0..=7)
+    let mask = 3; // (0..=7)
     
     
     // generate a new qr code
     let mut qr: Vec<Vec<Module>> = new_qr_code(version);
     set_error_correction_level(&mut qr, ecl);
-    let data: Vec<u8> = vec![51; get_capacity(&version)];
+    // generate some data
+    let data: Vec<u8> = vec![0; get_capacity(&version)];
     write_data_to_qr(&mut qr, data);
-    
+    write_mask(&mut qr, mask);
+
     // display the qr code
     let size = (version*4) + 1 + 2*8;
     //      add padding for vertical parity
