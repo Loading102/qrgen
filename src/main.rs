@@ -23,8 +23,8 @@ fn get_pixel(point: &Module) -> bool {
 
 fn new_qr_code(version: usize) -> Vec<Vec<Module>> {
     let alignment_pattern_distance = [1, 1, 1, 1, 1, 1, 16, 18, 20, 22, 24, 26, 28, 20, 22, 24, 24, 26, 28, 28, 22, 24, 24, 26, 26, 28, 28, 24, 24, 26, 26, 26, 26, 26, 24, 26, 26, 26, 28, 28];
-    // zaczyna się od version 7
     let verinf = [0x07C94, 0x085BC, 0x09A99, 0x0A4D3, 0x0BBF6, 0x0C762, 0x0D847, 0x0E60D, 0x0F928, 0x10B78, 0x1145D, 0x12A17, 0x13532, 0x149A6, 0x15683, 0x168C9, 0x177EC, 0x18EC4, 0x191E1, 0x1AFAB, 0x1B08E, 0x1CC1A, 0x1D33F, 0x1ED75, 0x1F250, 0x209D5, 0x216F0, 0x228BA, 0x2379F, 0x24B0B, 0x2542E, 0x26A64, 0x27541, 0x28C69];
+    // begins from version 7
 
     let size = (version*4) + 1 + 2*8; // payload + 2*finder pattern + 2*quiet zone
     let mut qr = vec![vec![Module::Unset; size]; size];
@@ -127,7 +127,7 @@ fn write_payload_to_qr(qr: &mut Vec<Vec<Module>>, payload: Vec<u8>) {
     let mut bitwise_pointer = 7;
     let mut bytewise_pointer = 0;
     if payload.len() != get_capacity(&version) {
-        panic!("Payload size different than the qr code version allows!");
+        panic!("Payload size different than what the qr code version allows!");
     }
     let mut out_of_bounds = false;
     let mut up = true;
@@ -159,7 +159,7 @@ fn write_payload_to_qr(qr: &mut Vec<Vec<Module>>, payload: Vec<u8>) {
 
 }
 
-fn get_capacity(version: &usize) -> usize {
+fn get_capacity(version: &usize) -> usize { // returns the number of bytes (data + ecc) for a given version
     if *version == 1 {
         26
     } else if *version < 7 {
@@ -169,15 +169,15 @@ fn get_capacity(version: &usize) -> usize {
     }
 }
 
-fn set_error_correction_level(qr: &mut Vec<Vec<Module>>, error_correction_level: usize) {
+fn mark_error_correction_level(qr: &mut Vec<Vec<Module>>, error_correction_level: usize) {
     let size = qr.len();
     qr[8][0]      = Module::Meta((error_correction_level-1) & 2 == 0);
     qr[size-1][8] = Module::Meta((error_correction_level-1) & 2 == 0);
-    qr[8][1]      = Module::Meta((error_correction_level-1) & 1 != 0);
-    qr[size-2][8] = Module::Meta((error_correction_level-1) & 1 != 0);
+    qr[8][1]      = Module::Meta((error_correction_level-1) & 1 == 0);
+    qr[size-2][8] = Module::Meta((error_correction_level-1) & 1 == 0);
 }
 
-fn write_mask(qr: &mut Vec<Vec<Module>>, mask: usize) { // this operation with the same parameters is its own opposite
+fn write_mask(qr: &mut Vec<Vec<Module>>, mask: usize) { // this operation done twice is identity, since it only XORs
     fn flip_data_module(modu: &mut Module) {
         if let Module::Data(val) = modu {*val = !*val}
     }    
@@ -203,7 +203,7 @@ fn write_mask(qr: &mut Vec<Vec<Module>>, mask: usize) { // this operation with t
     }
     let ecl = {
         (if let Module::Meta(val) = qr[8][0] {if val {0} else {2}} else {panic!("expected Module::Meta at qr[8][0]")}) + 
-        (if let Module::Meta(val) = qr[8][1] {if val {1} else {0}} else {panic!("expected Module::Meta at qr[8][1]")})
+        (if let Module::Meta(val) = qr[8][1] {if val {0} else {1}} else {panic!("expected Module::Meta at qr[8][1]")})
     };
     let foinf = [0x5412, 0x5125, 0x5E7C, 0x5B4B, 0x45F9, 0x40CE, 0x4F97, 0x4AA0, 0x77C4, 0x72F3, 0x7DAA, 0x789D, 0x662F, 0x6318, 0x6C41, 0x6976, 0x1689, 0x13BE, 0x1CE7, 0x19D0, 0x0762, 0x0255, 0x0D0C, 0x083B, 0x355F, 0x3068, 0x3F31, 0x3A06, 0x24B4, 0x2183, 0x2EDA, 0x2BED];
     let foinf = foinf[ecl*8+mask];
@@ -225,7 +225,7 @@ fn write_mask(qr: &mut Vec<Vec<Module>>, mask: usize) { // this operation with t
 
 }
 
-fn get_minimal_version(data_size_in_bytes:usize, error_correction_level: usize) -> usize {
+fn get_minimal_version(data_size_in_bytes:usize, error_correction_level: usize) -> (usize, usize, usize) {
     let ecl_version_raw_capacity = [
         [19, 34, 55, 80, 108, 136, 156, 194, 232, 274, 324, 370, 428, 461, 523, 589, 647, 721, 795, 861, 932, 1006, 1094, 1174, 1276, 1370, 1468, 1531, 1631, 1735, 1843, 1955, 2071, 2191, 2306, 2434, 2566, 2702, 2812, 2956],
         [16, 28, 44, 64, 86, 108, 124, 154, 182, 216, 254, 290, 334, 365, 415, 453, 507, 563, 627, 669, 714, 782, 860, 914, 1000, 1062, 1128, 1193, 1267, 1373, 1455, 1541, 1631, 1725, 1812, 1914, 1992, 2102, 2216, 2334],
@@ -236,7 +236,7 @@ fn get_minimal_version(data_size_in_bytes:usize, error_correction_level: usize) 
     if version_raw_capacity[39] < data_size_in_bytes && error_correction_level == 1 {panic!("No single qr code can contain this much data!")}
     if version_raw_capacity[39] < data_size_in_bytes {panic!("No single qr code at this error correction level can contain this much data!")}
     let mut version = 63;
-    for i in 0..=5 {
+    for i in 0..=5 {                // binary search for the right version
         let i = 5-i;
         version ^= 1<<i;
         if version > 39 {continue;}
@@ -244,7 +244,13 @@ fn get_minimal_version(data_size_in_bytes:usize, error_correction_level: usize) 
             version ^= 1<<i;
         }
     }
-    version+1
+    // return version, number of ecc bytes, number of data bytes
+    (version+1, get_capacity(&(version+1))-version_raw_capacity[version], version_raw_capacity[version])
+}
+
+fn get_number_of_blocks(version: &usize, error_correction_level: &usize) -> usize {
+    [ [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 2, 2], [1, 2, 2, 4], [1, 2, 4, 4], [2, 4, 4, 4], [2, 4, 6, 5], [2, 4, 6, 6], [2, 5, 8, 8], [4, 5, 8, 8], [4, 5, 8, 11], [4, 8, 10, 11], [4, 9, 12, 16], [4, 9, 16, 16], [6, 10, 12, 18], [6, 10, 17, 16], [6, 11, 16, 19], [6, 13, 18, 21], [7, 14, 21, 25], [8, 16, 19, 25], [8, 17, 23, 25], [9, 17, 24, 34], [9, 18, 25, 30], [10, 20, 27, 32], [12, 21, 29, 35], [12, 23, 34, 37], [12, 25, 34, 40], [13, 26, 35, 42], [14, 28, 39, 45], [15, 29, 40, 48], [16, 31, 43, 51], [17, 33, 45, 54], [18, 35, 48, 57], [19, 37, 51, 60], [19, 38, 53, 63], [20, 40, 56, 66], [21, 43, 59, 70], [22, 45, 62, 74], [24, 47, 65, 77], [25, 49, 68, 81] ]
+    [version-1][error_correction_level-1]
 }
 
 fn main() {
@@ -252,25 +258,33 @@ fn main() {
     // io::stdin().read_line(&mut version).expect("Should be an intiger from between 1 and 40 (inclusive)");
     // let version: u8 = version.trim().parse().expect("Should be an intiger from between 1 and 40 (inclusive)");
     
-    let data: Vec<i8> = vec![0; 2956];
+    let data: Vec<i8> = vec![0; 10]; // todo: data creation and formatting
     let ecl = 1; // (1..=4)
-    let mask = 3; // (0..=7)
+    let mask = 5; // (0..=7)  // todo: automatic masking
     // let qz = 4; // quiet zone size, currently broken if not 4
     
     
-    
-    
-    
     // generate a new qr code
-    let version = get_minimal_version(data.len(), ecl); // (1..=40)
-
-    println!("{version}");
-
+    let version = get_minimal_version(data.len(), ecl);
+    let data: Vec<i8> = {
+        let padd: usize = version.2-data.len();                  //
+        data.into_iter().chain(vec![0; padd]).collect()          // padd the data to the correct size with zeros
+    };
+    let ecc_bytes = version.1;
+    let version = version.0; // (1..=40)
     let mut qr: Vec<Vec<Module>> = new_qr_code(version);
-    set_error_correction_level(&mut qr, ecl);
-    // generate some payload
+    mark_error_correction_level(&mut qr, ecl);
+    
+    let mut ecc: Vec<i8> = vec![0; 3];
+    
+    
     let payload: Vec<u8> = vec![0; get_capacity(&version)];
     write_payload_to_qr(&mut qr, payload);
+
+
+
+
+    // mask the qr code
     write_mask(&mut qr, mask);
 
     // display the qr code
