@@ -255,7 +255,11 @@ fn get_number_of_blocks(version: &usize, error_correction_level: &usize) -> usiz
 }
 
 fn get_generator_polynomial(number_of_codeblocks: usize) -> Vec<Gf> {
-    vec![Gf(0);1]
+    let mut poly = vec![Gf(0); number_of_codeblocks];
+
+
+    
+    poly
 }
 
 fn main() {
