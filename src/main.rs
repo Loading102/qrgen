@@ -1,5 +1,5 @@
-// use rand::Rng;
-// use std::io;
+pub mod galois_field;
+use crate::galois_field::Gf;
 
 #[derive(Clone)]
 #[derive(PartialEq)]
@@ -10,8 +10,9 @@ enum Module {
     Unset
 }
 
+
 fn get_pixel(point: &Module) -> bool {
-    match point {
+match point {
         Module::Data(pixel) => *pixel,
         Module::Meta(pixel) => *pixel,
         Module::Constant(pixel) => *pixel,
@@ -22,7 +23,7 @@ fn get_pixel(point: &Module) -> bool {
 }
 
 fn new_qr_code(version: usize) -> Vec<Vec<Module>> {
-    let alignment_pattern_distance = [1, 1, 1, 1, 1, 1, 16, 18, 20, 22, 24, 26, 28, 20, 22, 24, 24, 26, 28, 28, 22, 24, 24, 26, 26, 28, 28, 24, 24, 26, 26, 26, 26, 26, 24, 26, 26, 26, 28, 28];
+let alignment_pattern_distance = [1, 1, 1, 1, 1, 1, 16, 18, 20, 22, 24, 26, 28, 20, 22, 24, 24, 26, 28, 28, 22, 24, 24, 26, 26, 28, 28, 24, 24, 26, 26, 26, 26, 26, 24, 26, 26, 26, 28, 28];
     let verinf = [0x07C94, 0x085BC, 0x09A99, 0x0A4D3, 0x0BBF6, 0x0C762, 0x0D847, 0x0E60D, 0x0F928, 0x10B78, 0x1145D, 0x12A17, 0x13532, 0x149A6, 0x15683, 0x168C9, 0x177EC, 0x18EC4, 0x191E1, 0x1AFAB, 0x1B08E, 0x1CC1A, 0x1D33F, 0x1ED75, 0x1F250, 0x209D5, 0x216F0, 0x228BA, 0x2379F, 0x24B0B, 0x2542E, 0x26A64, 0x27541, 0x28C69];
     // begins from version 7
 
@@ -159,13 +160,13 @@ fn write_payload_to_qr(qr: &mut Vec<Vec<Module>>, payload: Vec<u8>) {
 
 }
 
-fn get_capacity(version: &usize) -> usize { // returns the number of bytes (data + ecc) for a given version
+const fn get_capacity(version: &usize) -> usize { // returns the number of bytes (data + ecc) for a given version
     if *version == 1 {
         26
     } else if *version < 7 {
-        ((version*4+17)*(version*4+17)-3*8*8-5*5-2*(version*4+1)-31)/8
+        ((*version*4+17)*(*version*4+17)-3*8*8-5*5-2*(*version*4+1)-31)/8
     } else {
-        ((version*4+17)*(version*4+17)-3*8*8-2*(version*4+1)-67-((version/7 + 2)*(version/7 + 2)-3)*5*5 + (version/7)*2*5)/8
+        ((*version*4+17)*(*version*4+17)-3*8*8-2*(*version*4+1)-67-((*version/7 + 2)*(*version/7 + 2)-3)*5*5 + (*version/7)*2*5)/8
     }
 }
 
@@ -253,20 +254,21 @@ fn get_number_of_blocks(version: &usize, error_correction_level: &usize) -> usiz
     [version-1][error_correction_level-1]
 }
 
+fn get_generator_polynomial(number_of_codeblocks: usize) -> Vec<Gf> {
+    vec![Gf(0);1]
+}
+
 fn main() {
-    // let mut version = String::new();
-    // io::stdin().read_line(&mut version).expect("Should be an intiger from between 1 and 40 (inclusive)");
-    // let version: u8 = version.trim().parse().expect("Should be an intiger from between 1 and 40 (inclusive)");
     
-    let data: Vec<i8> = vec![0; 10]; // todo: data creation and formatting
+
+    let data: Vec<u8> = vec![0; 10]; // todo: data creation and formatting
     let ecl = 1; // (1..=4)
     let mask = 5; // (0..=7)  // todo: automatic masking
-    // let qz = 4; // quiet zone size, currently broken if not 4
     
     
     // generate a new qr code
     let version = get_minimal_version(data.len(), ecl);
-    let data: Vec<i8> = {
+    let data: Vec<u8> = {
         let padd: usize = version.2-data.len();                  //
         data.into_iter().chain(vec![0; padd]).collect()          // padd the data to the correct size with zeros
     };
@@ -275,10 +277,21 @@ fn main() {
     let mut qr: Vec<Vec<Module>> = new_qr_code(version);
     mark_error_correction_level(&mut qr, ecl);
     
-    let mut ecc: Vec<i8> = vec![0; 3];
+    let mut ecc: Vec<u8> = vec![0; 3];
+    let number_of_blocks = get_number_of_blocks(&version, &ecl);
+    let mut block_size = get_capacity(&version)/number_of_blocks;
+    for i in 0..number_of_blocks {
+        if i == number_of_blocks + block_size * number_of_blocks - get_capacity(&version) {
+            block_size += 1;
+        }
+
+    }
     
     
-    let payload: Vec<u8> = vec![0; get_capacity(&version)];
+    let data_iterator = data.iter();
+    let mut payload: Vec<u8> = vec![0; get_capacity(&version)];
+    
+    
     write_payload_to_qr(&mut qr, payload);
 
 
